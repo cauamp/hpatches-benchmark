@@ -1,0 +1,7 @@
+{
+    "top_k": 4096,
+    "model_name": "ressegnetv2",
+    "use_stability": true,
+    "conf_th": 0.001,
+    "scales": [1.0]
+}

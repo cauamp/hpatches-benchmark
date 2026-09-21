@@ -1,0 +1,8 @@
+{
+    "model_name": "alike-t",
+    "top_k": 4096,
+    "scores_th": 0.0,
+    "n_limit": 10000,
+    "sub_pixel": true,
+    "model_path": null
+}

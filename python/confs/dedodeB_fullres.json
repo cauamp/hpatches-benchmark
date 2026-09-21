@@ -1,0 +1,9 @@
+{
+    "model_name": "dedode",
+    "top_k": 4096,
+    "detection_threshold": 0.2,
+    "nms_radius": 4,
+    "detector_weights": "L-upright",
+    "descriptor_weights": "B-upright",
+    "amp_dtype": "float16"
+}

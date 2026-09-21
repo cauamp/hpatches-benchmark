@@ -1,0 +1,7 @@
+{
+    "model_name": "aliked-n16",
+    "top_k": 4096,
+    "detection_threshold": 0.2,
+    "force_num_keypoints": false,
+    "nms_radius": 2
+}

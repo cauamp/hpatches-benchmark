@@ -58,6 +58,59 @@ def to_rgb_patch(patch, out_size):
     return np.stack([patch] * 3, axis=-1)
 
 
+def chunks(seq, size):
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
+
+
+def _descriptor_of(out):
+    if isinstance(out, tuple):
+        out = out[1]
+    return out.detach().float().cpu().numpy()
+
+
+def compute_via_detect(model, patch, c, desc_dim_hint):
+    """Fallback for models whose compute() is unimplemented (e.g. SFD2 in
+    this easy_local_features version): run full detectAndCompute() on the
+    patch -- the same call hloc itself always uses -- and take the detected
+    keypoint nearest to the patch center as the patch's descriptor.
+    """
+    out = model.detectAndCompute(patch, return_dict=True)
+    kpts = out['keypoints'].detach().float().cpu().numpy().reshape(-1, 2)
+    descs = out['descriptors'].detach().float().cpu().numpy().reshape(kpts.shape[0], -1)
+    if kpts.shape[0] == 0:
+        dim = descs.shape[-1] if descs.size else desc_dim_hint
+        return np.zeros(dim, dtype=np.float32)
+    dists = np.sum((kpts - np.array([c, c])) ** 2, axis=1)
+    return descs[np.argmin(dists)]
+
+
+def compute_batch(model, rgb_batch, c, device):
+    """Compute descriptors for a batch of same-size patches at their center.
+
+    Keypoints are passed as a torch.Tensor (not numpy) because some baselines
+    (e.g. SuperPoint) call tensor-only ops on them without converting first.
+
+    Some easy_local_features baselines' compute() doesn't actually support
+    batch size > 1 correctly (e.g. SuperPoint's internal per-image keypoint
+    detection returns a variable count per patch and fails to stack; DISK
+    hardcodes a batch size of 1 internally). Rather than special-case each
+    model, try the batched call and fall back to one-patch-at-a-time on
+    failure.
+    """
+    b = len(rgb_batch)
+    kp_batch = torch.full((b, 1, 2), c, dtype=torch.float32, device=device)
+    try:
+        desc = _descriptor_of(model.compute(np.stack(rgb_batch, axis=0), kp_batch))
+        return desc.reshape(b, -1)
+    except Exception:
+        descs = []
+        for patch, kp in zip(rgb_batch, kp_batch):
+            desc = _descriptor_of(model.compute(patch, kp))
+            descs.append(desc.reshape(-1))
+        return np.stack(descs, axis=0)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -78,6 +131,11 @@ def main():
     parser.add_argument(
         '--output-name', type=str, default=None,
         help='Descriptor output folder name (default: easy-<elf-model>-<out-size>)')
+    parser.add_argument(
+        '--batch-size', type=int, default=128,
+        help='Patches per forward pass (compute() accepts batched images/keypoints '
+             'per the BaseExtractor contract; batching is needed to make extraction '
+             'over the ~2.5M HPatches patches tractable). Default: 128.')
     args = parser.parse_args()
 
     elf_conf = {}
@@ -100,7 +158,20 @@ def main():
         if os.path.isdir(p))
 
     c = args.out_size / 2.0
-    center_kp = np.array([[c, c]], dtype=np.float32)
+
+    # Probe whether compute() is actually implemented (some baselines, e.g.
+    # SFD2 in this easy_local_features version, declare it but raise
+    # NotImplementedError). If not, fall back to full detectAndCompute() per
+    # patch and take the keypoint nearest the patch center.
+    dummy = to_rgb_patch(np.zeros((args.out_size, args.out_size), dtype=np.uint8), args.out_size)
+    with torch.no_grad():
+        try:
+            model.compute(dummy, torch.tensor([[[c, c]]], dtype=torch.float32, device=device))
+            use_detect_fallback = False
+        except NotImplementedError:
+            use_detect_fallback = True
+            print(f"'{args.elf_model}'.compute() is not implemented; falling back to "
+                  "detectAndCompute() + nearest-keypoint-to-center per patch.")
 
     for seq_path in tqdm(seqs, desc='sequences'):
         seq = hpatches_sequence(seq_path)
@@ -110,16 +181,19 @@ def main():
             out_file = os.path.join(out_dir, tp + '.csv')
             if os.path.isfile(out_file):
                 continue
+            patches = getattr(seq, tp)
             descs = []
             with torch.no_grad():
-                for patch in getattr(seq, tp):
-                    rgb_patch = to_rgb_patch(patch, args.out_size)
-                    out = model.compute(rgb_patch, center_kp)
-                    if isinstance(out, tuple):
-                        out = out[1]
-                    desc = out.detach().float().cpu().numpy().reshape(-1)
-                    descs.append(desc)
-            np.savetxt(out_file, np.stack(descs, axis=0), delimiter=',', fmt='%10.5f')
+                if use_detect_fallback:
+                    for patch in patches:
+                        rgb_patch = to_rgb_patch(patch, args.out_size)
+                        descs.append(compute_via_detect(model, rgb_patch, c, None))
+                else:
+                    for batch in chunks(patches, args.batch_size):
+                        rgb_batch = [to_rgb_patch(p, args.out_size) for p in batch]
+                        descs.append(compute_batch(model, rgb_batch, c, device))
+            np.savetxt(out_file, np.stack(descs, axis=0) if use_detect_fallback
+                       else np.concatenate(descs, axis=0), delimiter=',', fmt='%10.5f')
 
 
 if __name__ == '__main__':
