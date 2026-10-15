@@ -1,0 +1,6 @@
+method,illumination_MHA@3,illumination_MHA@5,illumination_MHA@7,illumination_MIR,viewpoint_MHA@3,viewpoint_MHA@5,viewpoint_MHA@7,viewpoint_MIR
+d2net,93.684,98.246,98.947,0.553,58.644,75.932,81.356,0.361
+delf,97.193,97.193,97.193,0.759,8.136,22.712,29.831,0.087
+desc_reasoning,92.982,97.544,97.895,0.689,70.169,82.712,87.119,0.488
+r2d2,94.035,97.544,97.895,0.794,68.136,79.661,83.39,0.652
+superpoint_open,92.982,96.491,97.895,0.731,64.746,78.644,83.39,0.584

@@ -74,10 +74,18 @@ def compute_via_detect(model, patch, c, desc_dim_hint):
     this easy_local_features version): run full detectAndCompute() on the
     patch -- the same call hloc itself always uses -- and take the detected
     keypoint nearest to the patch center as the patch's descriptor.
+
+    Some detectors (e.g. SFD2) don't return an empty result gracefully when
+    they find zero keypoints in a low-texture patch -- they raise inside
+    their own forward pass (e.g. np.vstack on an empty list). Catch that too,
+    not just an empty-but-successful return.
     """
-    out = model.detectAndCompute(patch, return_dict=True)
-    kpts = out['keypoints'].detach().float().cpu().numpy().reshape(-1, 2)
-    descs = out['descriptors'].detach().float().cpu().numpy().reshape(kpts.shape[0], -1)
+    try:
+        out = model.detectAndCompute(patch, return_dict=True)
+        kpts = out['keypoints'].detach().float().cpu().numpy().reshape(-1, 2)
+        descs = out['descriptors'].detach().float().cpu().numpy().reshape(kpts.shape[0], -1)
+    except Exception:
+        return np.zeros(desc_dim_hint, dtype=np.float32)
     if kpts.shape[0] == 0:
         dim = descs.shape[-1] if descs.size else desc_dim_hint
         return np.zeros(dim, dtype=np.float32)
@@ -173,6 +181,17 @@ def main():
             print(f"'{args.elf_model}'.compute() is not implemented; falling back to "
                   "detectAndCompute() + nearest-keypoint-to-center per patch.")
 
+    desc_dim_hint = None
+    if use_detect_fallback:
+        # Determine descriptor dim from a textured probe patch (needed for the
+        # zero-keypoint fallback in compute_via_detect, where the detector
+        # never returns a descriptor to infer the dim from at all).
+        rng = np.random.default_rng(0)
+        noisy = to_rgb_patch(rng.integers(0, 256, (args.out_size, args.out_size), dtype=np.uint8), args.out_size)
+        with torch.no_grad():
+            out = model.detectAndCompute(noisy, return_dict=True)
+        desc_dim_hint = out['descriptors'].shape[-1]
+
     for seq_path in tqdm(seqs, desc='sequences'):
         seq = hpatches_sequence(seq_path)
         out_dir = os.path.join(descr_name, seq.name)
@@ -187,7 +206,7 @@ def main():
                 if use_detect_fallback:
                     for patch in patches:
                         rgb_patch = to_rgb_patch(patch, args.out_size)
-                        descs.append(compute_via_detect(model, rgb_patch, c, None))
+                        descs.append(compute_via_detect(model, rgb_patch, c, desc_dim_hint))
                 else:
                     for batch in chunks(patches, args.batch_size):
                         rgb_batch = [to_rgb_patch(p, args.out_size) for p in batch]

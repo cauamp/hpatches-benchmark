@@ -38,7 +38,7 @@ seqs = glob.glob(sys.argv[1]+'/*')
 seqs = [os.path.abspath(p) for p in seqs]
 
 descr_name = 'opencv-sift-'+str(OUT_W)
-sift1 = cv2.xfeatures2d.SIFT_create()
+sift1 = cv2.SIFT_create()
 
 def get_center_kp(PS=65.):
     c = PS/2.0

@@ -3,8 +3,28 @@ HLoc/hloc/extractors/easy-features.py (an easy_local_features model is built
 with `getMethod(elf_model, elf_conf)` and moved to the best available
 device); see also the 'easy-features' entries in HLoc/hloc/extract_features.py.
 """
+import types
+
+import numpy as np
+import scipy
 import torch
 from easy_local_features import getMethod
+
+# easy_local_features' d2net baseline still calls the long-removed
+# scipy.misc.imresize(arr, scale_factor) for images above its size cap; scipy
+# dropped that module years ago. Restore just enough of it (float scale
+# factor only, matching how baseline_d2net.py calls it) rather than patching
+# the vendored package.
+if not hasattr(scipy, 'misc'):
+    def _imresize_compat(arr, size, interp='bilinear'):
+        from PIL import Image
+        im = Image.fromarray(np.asarray(arr).astype(np.uint8))
+        resample = {'nearest': Image.NEAREST, 'bilinear': Image.BILINEAR,
+                    'bicubic': Image.BICUBIC}.get(interp, Image.BILINEAR)
+        new_size = (int(round(im.width * size)), int(round(im.height * size)))
+        return np.array(im.resize(new_size, resample))
+
+    scipy.misc = types.SimpleNamespace(imresize=_imresize_compat)
 
 
 def get_extractor(elf_model, elf_conf=None):

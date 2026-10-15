@@ -13,3 +13,4 @@ data/hpatches-release/**
 test_*/
 outputs/
 logs/
+pose_results*/work/
