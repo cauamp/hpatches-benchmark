@@ -8,6 +8,7 @@ hfnet,pose_results,12.99,25.75,38.71
 superpoint,pose_results,12.94,25.87,39.02
 d2net,pose_results_extra_sparse,12.81,25.39,39.05
 aliked,pose_results,12.41,23.95,36.40
+liftfeat,pose_results,12.24,25.26,39.54
 disk,pose_results,10.93,21.61,33.13
 superpoint_open,pose_results_extra_sparse,10.36,20.56,31.19
 alike,pose_results,7.59,16.00,25.71

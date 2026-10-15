@@ -8,6 +8,7 @@ alike,pose_results,53.58,65.27,74.13
 sift,pose_results,50.68,64.41,75.45
 superpoint,pose_results,48.89,61.23,70.76
 sfd2,pose_results,48.60,61.95,71.92
+liftfeat,pose_results,47.42,61.31,72.11
 hfnet,pose_results,47.16,59.82,69.39
 desc_reasoning,pose_results_extra_sparse,47.04,60.62,71.37
 superpoint_open,pose_results_extra_sparse,45.83,57.52,66.50
