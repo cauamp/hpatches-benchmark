@@ -156,6 +156,56 @@ def hfnet_matcher_fn(max_keypoints=4096,
     return match
 
 
+def liftfeat_matcher_fn(max_keypoints=4096,
+                        liftfeat_root='/tank/teams/image_matching_team/cauamp/proc9draft/LiftFeat'):
+    """LiftFeat (ICRA 2025), not part of easy_local_features. Uses its own
+    wrapper (models/liftfeat_wrapper.py) with the official evals' defaults
+    (weights/LiftFeat.pth, detect_threshold=0.1), capped to max_keypoints and its built-in mutual
+    nearest-neighbor match_liftfeat, which takes BGR uint8 like cv2.imread.
+
+    LiftFeat ships top-level `utils` and `models` packages, and its `utils`
+    collides with this repo's: swap our cached `utils*` modules out while
+    importing it, then put them back (LiftFeat's modules keep their own
+    references to what they imported).
+    """
+    import sys
+
+    def owned(k):
+        return k in ('utils', 'models') or k.startswith(('utils.', 'models.'))
+
+    ours = {k: sys.modules.pop(k) for k in list(sys.modules) if owned(k)}
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    original_path = list(sys.path)
+    try:
+        sys.path[:] = [liftfeat_root] + [p for p in sys.path if os.path.abspath(p or '.') != script_dir]
+        from models.liftfeat_wrapper import LiftFeat
+    finally:
+        sys.path[:] = original_path
+        for k in [k for k in sys.modules if owned(k)]:
+            sys.modules.pop(k)
+        sys.modules.update(ours)
+
+    model = LiftFeat(top_k=max_keypoints)
+    # The wrapper stores top_k but its NMS never applies it (keeps every
+    # keypoint above detect_threshold), so cap to the top_k highest-scoring
+    # keypoints here, as the other methods' confs do. match_liftfeat calls
+    # self.extract, so wrapping it on the instance is enough.
+    extract = model.extract
+
+    def extract_top_k(image):
+        out = extract(image)
+        idx = out['scores'].argsort(descending=True)[:model.top_k]
+        return {k: v[idx] for k, v in out.items()}
+
+    model.extract = extract_top_k
+
+    def match(img0, img1):
+        mkpts0, mkpts1 = model.match_liftfeat(img0, img1)
+        return mkpts0.astype(np.float32), mkpts1.astype(np.float32)
+
+    return match
+
+
 def upal_matcher_fn(weights_path, device):
     import torch
     from upal import load_model
@@ -184,7 +234,7 @@ def upal_matcher_fn(weights_path, device):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('sequences_root', help='Root folder of HPatches Sequences (1.ppm..6.ppm + H_1_2..H_1_6 per sequence dir)')
-    parser.add_argument('--elf-model', required=True, help="easy_local_features extractor name, 'sift', 'upal', 'zippypoint', or 'hfnet'")
+    parser.add_argument('--elf-model', required=True, help="easy_local_features extractor name, 'sift', 'upal', 'zippypoint', 'hfnet', or 'liftfeat'")
     parser.add_argument('--elf-conf', type=str, default=None, help='Path to a JSON file with extractor config overrides')
     parser.add_argument('--upal-weights', type=str, default='/tank/teams/image_matching_team/cauamp/proc9draft/upal/weights/upal.tar',
                          help='Path to the local UPAL checkpoint (only used with --elf-model upal)')
@@ -199,6 +249,8 @@ def main():
         matcher_fn = zippypoint_matcher_fn()
     elif args.elf_model == 'hfnet':
         matcher_fn = hfnet_matcher_fn()
+    elif args.elf_model == 'liftfeat':
+        matcher_fn = liftfeat_matcher_fn()
     elif args.elf_model == 'upal':
         import torch
         device = 'cuda' if torch.cuda.is_available() else 'cpu'

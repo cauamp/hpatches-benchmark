@@ -35,13 +35,15 @@ def to_bgr_uint8(image):
 
 
 def build_matcher(args):
-    if args.elf_model in ('sift', 'zippypoint', 'hfnet', 'upal'):
+    if args.elf_model in ('sift', 'zippypoint', 'hfnet', 'liftfeat', 'upal'):
         if args.elf_model == 'sift':
             bgr_match = seq.sift_matcher_fn()
         elif args.elf_model == 'zippypoint':
             bgr_match = seq.zippypoint_matcher_fn()
         elif args.elf_model == 'hfnet':
             bgr_match = seq.hfnet_matcher_fn()
+        elif args.elf_model == 'liftfeat':
+            bgr_match = seq.liftfeat_matcher_fn()
         else:
             import torch
             bgr_match = seq.upal_matcher_fn(args.upal_weights, 'cuda' if torch.cuda.is_available() else 'cpu')
@@ -69,7 +71,7 @@ def build_matcher(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--dataset', choices=list(DATASETS), required=True)
-    parser.add_argument('--elf-model', required=True, help="easy_local_features extractor name, 'sift', 'upal', 'zippypoint', or 'hfnet'")
+    parser.add_argument('--elf-model', required=True, help="easy_local_features extractor name, 'sift', 'upal', 'zippypoint', 'hfnet', or 'liftfeat'")
     parser.add_argument('--elf-conf', type=str, default=None, help='Path to a JSON file with extractor config overrides')
     parser.add_argument('--upal-weights', type=str, default='/tank/teams/image_matching_team/cauamp/proc9draft/upal/weights/upal.tar')
     parser.add_argument('--results-dir', type=str, default='pose_results', help='Where to write <dataset>/<name>.json')
